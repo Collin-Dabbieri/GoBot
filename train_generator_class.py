@@ -20,19 +20,19 @@ import math
 
 class DataGenerator(tf.keras.utils.Sequence):
     'Generates data for Keras'
-    
+
     def __init__(self,filenames,shuffle=True):
         'Initialization'
         self.filenames=filenames
         self.shuffle=shuffle #should be false on validation generator so model.predict will return correct indices
         self.indexes=np.arange(len(filenames))
         self.on_epoch_end()
-        
+
     def __len__(self):
         'Denotes the number of batches per epoch'
         # since each batch is a single game of Go, the number of batches is just the number of games of Go created
         return len(self.filenames)
-    
+
     def on_epoch_end(self):
         'Updates the indexes after each epoch'
         self.indexes=np.arange(len(self.filenames))
@@ -41,22 +41,26 @@ class DataGenerator(tf.keras.utils.Sequence):
 
     def __getitem__(self,index):
         'Generate one batch of data'
-        
+
         #the generator will provide the index
-                
+
         #Generate data
-        X,y=self.__data_generation(self.filenames[index])
-        
-        return X,y
+        ins,outs=self.__data_generation(self.filenames[index])
+
+        return ins,outs
 
     def __data_generation(self,filename):
         'Generates data from one game'
-        
         data=np.load(filename,allow_pickle=True)
-        ins=data['ins'] #shape num_moves,19,19,2
-        outs=data['outs'] #shape num_moves,19*19
-        
+
+        ins=data.item().get('ins') #shape num_moves,19,19,2
+        outs=data.item().get('outs') #shape num_moves,19*19
+
+        num_moves=np.shape(ins)[0]
+
         # we actually want our model output to be a 19x19 matrix so we need to reshape outs
-        outs=outs.reshape((19,19))
+        outs=outs.reshape((num_moves,19,19,1))
+
+        return ins,outs
 
 
