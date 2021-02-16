@@ -17,13 +17,13 @@ import time
 
 
 ######################### USER SPECIFIED VALUES ##############################################
-database_dir='/Users/dabbiecm/Go_Database/jgdb/'
+database_dir='/home/pi/Go_Database/jgdb/'
 # paths in text files are like './sgf/train/0000/00000012.sgf'
 raw_train_paths=np.loadtxt(database_dir+'train.txt',dtype=str)
 raw_validation_paths=np.loadtxt(database_dir+'val.txt',dtype=str)
 raw_test_paths=np.loadtxt(database_dir+'test.txt',dtype=str)
 
-savedir='/Users/dabbiecm/Go_Database/Processed/' # Directory for saving processed binary files
+savedir='/home/pi/Go_Database/Processed/' # Directory for saving processed binary files
 
 print_every=50 # print a progress report every print_every games added to data
 
@@ -183,15 +183,13 @@ def coerce_data(path):
     # different files have different numbers of rows, but what we want is always last row,
     # delimiter is ;
     #time0=time.time()
-    with open(path) as f:
+    with open(path,encoding="utf8", errors='ignore') as f:
         for line in f:
-            print(line)
             pass
         moves = line
     # clean data
     moves=moves.split(';')
     moves = [ x for x in moves if x != '' ]
-    print(moves)
     for i in range(len(moves)):
         moves[i]=moves[i].replace('\n','')
     # now each move should be like B[aj], W[ab], etc
@@ -205,7 +203,9 @@ def coerce_data(path):
 
     black_move=True #whether the output is a move made by black
 
-
+    if len(moves)==1:
+        # at least some of the games from the database have 0 moves in them
+        return None,None
     delete_idx=[] #indexes deleted from ins and outs because a user passed
     for i in range(len(moves)):
 
@@ -270,7 +270,7 @@ if __name__=='__main__':
     print("Creating Training Data")
     print("Number of Train paths: "+str(len(train_paths)))
     print("Number of Training Data Being Used: "+str(num_train))
-    for i in range(1350,num_train):
+    for i in range(0):
 
         if ((i%print_every==0)&(i!=0)):
             # print progress report
@@ -293,18 +293,19 @@ if __name__=='__main__':
         # Instead, we'll have to continually write ins and outs to binary files
         # then when we train, we can write a generator that loads in the binary files
         # Just writing out one file per game
-        savename=savedir+'go_train_'+str(i).zfill(6)+'.npy'
-        savedict={}
-        savedict['ins']=ins_iter
-        savedict['outs']=outs_iter
-        np.save(savename,savedict)
+        if ins_iter is not None:
+            savename=savedir+'go_train_'+str(i).zfill(6)+'.npy'
+            savedict={}
+            savedict['ins']=ins_iter
+            savedict['outs']=outs_iter
+            np.save(savename,savedict)
 
     print("Creating Validation Data")
     print("Number of Validation paths: "+str(len(val_paths)))
     frac_train=num_train/len(train_paths)
-    num_val=frac_train*len(val_paths)
+    num_val=int(frac_train*len(val_paths))
     print("Number of Validation Paths Being Used: "+str(num_val))
-    for i in range(num_val):
+    for i in range(0):
 
         if ((i%print_every==0)&(i!=0)):
             # print progress report
@@ -327,15 +328,16 @@ if __name__=='__main__':
         # Instead, we'll have to continually write ins and outs to binary files
         # then when we train, we can write a generator that loads in the binary files
         # Just writing out one file per game
-        savename=savedir+'go_val_'+str(i).zfill(6)+'.npy'
-        savedict={}
-        savedict['ins']=ins_iter
-        savedict['outs']=outs_iter
-        np.save(savename,savedict)
+        if ins_iter is not None:
+            savename=savedir+'go_val_'+str(i).zfill(6)+'.npy'
+            savedict={}
+            savedict['ins']=ins_iter
+            savedict['outs']=outs_iter
+            np.save(savename,savedict)
 
     print("Creating Test Data")
     print("Number of Test paths: "+str(len(test_paths)))
-    num_test=frac_train*len(test_paths)
+    num_test=int(frac_train*len(test_paths))
     print("Number of Test Paths Being Used: "+str(num_test))
     for i in range(num_test):
 
@@ -360,11 +362,12 @@ if __name__=='__main__':
         # Instead, we'll have to continually write ins and outs to binary files
         # then when we train, we can write a generator that loads in the binary files
         # Just writing out one file per game
-        savename=savedir+'go_test_'+str(i).zfill(6)+'.npy'
-        savedict={}
-        savedict['ins']=ins_iter
-        savedict['outs']=outs_iter
-        np.save(savename,savedict)
+        if ins_iter is not None:
+            savename=savedir+'go_test_'+str(i).zfill(6)+'.npy'
+            savedict={}
+            savedict['ins']=ins_iter
+            savedict['outs']=outs_iter
+            np.save(savename,savedict)
 
 
 # This is to test if our calculate_liberties function works
