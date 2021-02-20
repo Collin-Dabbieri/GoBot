@@ -15,7 +15,7 @@ import os
 import sys
 import tensorflow as tf
 backend='tensorflow'
-from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import Conv2D, Flatten, BatchNormalization, Dense
 from tensorflow.keras import optimizers
 from tensorflow.keras import Input
 from tensorflow.keras.models import Model
@@ -25,10 +25,14 @@ from train_generator_class import DataGenerator as DataGeneratorTrain
 
 ########################## USER SPECIFIED VALUES ###############################################
 
+load_model=False                            # Boolean for whether to load in prior created model 
+model_path=''                               # path to prior created model (if load_model=True)
+train_num=1                                 # training number for this model (for filename generation)
+
 conv=[50,50,50,50,50,50,50,50,50,50]        # list with number of filters in each convolutional layer (does not include output layer)
-epochs=10                                   # number of training epochs
+epochs=1                                    # number of training epochs
 activation='elu'                            # activation function for convolutional filters
-l2=0.001                                    # l2 regularization value
+l2=0.000                                    # l2 regularization value
 kernel_initializer='glorot_uniform'         # kernel initializer
 bias_initializer='zeros'                    # bias initializer
 padding='same'                              # padding for convolutional layers
@@ -37,12 +41,12 @@ verbose=1                                   # verbosity
 kernel_size=[5,3,3,3,3,3,3,3,3,3]           # list of kernel sizes for each convolutional layer
 loss='binary_crossentropy'                  # loss function for training
 opt='adam'                                  # optimizer for training (adam or rmsprop)
-lrate=0.0001                                # learning rate for training
+lrate=0.001                                 # learning rate for training
 shuffle=True                                # boolean for shuffling training indexes each epoch
 
-files_dir='/home/pi/Go_Database/Processed/' # path to directory where training data, validation data, and partition file are located
-filename_partition='partition.npy'          # filename of partition file
-results_dir='/home/pi/repos/GoBot/results/' # path to directory for saving results
+files_dir='/Users/dabbiecm/Go_Database/Processed/'        # path to directory where training data, validation data, and partition file are located
+filename_partition='partition.npy'                        # filename of partition file
+results_dir='/Users/dabbiecm/Dropbox/Misc/GoBot/results/' # path to directory for saving results
 
 ########################## FUNCTIONS ###########################################################
 
@@ -54,15 +58,21 @@ def build_model(args):
     returns:
         model - tensorflow model object
     '''
+    
+    if args['load_model']:
+        model = tf.keras.models.load_model(args['model_path'])
+        return model
+    
     num_layers=len(args['conv'])
 
     # build input convolutional layer
-    inpt = Input(shape=(19,19,2),name='input') # 2 filter input Go board
+    inpt = Input(shape=(19,19,11),name='input') # 11 binary planes (3 for board state, 8 for num of liberties)
     x1=Conv2D(filters=args['conv'][0],
               kernel_size=args['kernel_size'][0],
               padding=args['padding'],
               activation=args['activation'],
               kernel_regularizer=tf.keras.regularizers.l2(args['l2']))(inpt)
+    x1=BatchNormalization()(x1)
     # build all subsequent convolutional layers
     for i in range(1,num_layers):
         x1=Conv2D(filters=args['conv'][i],
@@ -73,16 +83,18 @@ def build_model(args):
                   use_bias=True,
                   bias_initializer=args['bias_initializer'],
                   kernel_regularizer=tf.keras.regularizers.l2(args['l2']))(x1)
+        x1=BatchNormalization()(x1)
+        
+    # flatten so it can be fed to Dense output
+    x1=Flatten()(x1)
 
     # build output convolutional layer
-    output=Conv2D(filters=1,
+    output=Dense(units=19*19+1,
                   name='output',
-                  kernel_size=3,
-                  padding='same',
                   activation=args['output_activation'],
-                  use_bias=True,
                   bias_initializer=args['bias_initializer'],
                   kernel_initializer=args['kernel_initializer'])(x1)
+    
 
     model=Model(inputs=inpt,outputs=output)
 
@@ -91,7 +103,7 @@ def build_model(args):
     elif args['opt']=="rmsprop":
         opt="rmsprop"
 
-    model.compile(loss=args['loss'], optimizer=opt, metrics=['categorical_accuracy'])
+    model.compile(loss=args['loss'], optimizer=opt, metrics=['binary_accuracy'])
 
     if args['verbose']>0.:
         print(model.summary())
@@ -113,8 +125,9 @@ def generate_fname(args):
     for i in args['conv']:
         conv_str=conv_str+str(i).zfill(2)+'_'
     l2_str='l2_'+str(args['l2']).zfill(6)+'_'
-    lrate_str='lrate_'+str(args['lrate']).zfill(6)
-    fbase=conv_str+l2_str+lrate_str
+    lrate_str='lrate_'+str(args['lrate']).zfill(6)+'_'
+    train_num_str='exp_'+str(args['train_num']).zfill(2)
+    fbase=conv_str+l2_str+lrate_str+train_num_str
     return(fbase)
 
 ########################## MAIN LOOP ###########################################################
@@ -123,6 +136,9 @@ def generate_fname(args):
 if __name__=='__main__':
     # build args from values in USER SPECIFIED VALUES
     args={}
+    args['load_model']=load_model
+    args['model_path']=model_path
+    args['train_num']=train_num
     args['conv']=conv
     args['epochs']=epochs
     args['activation']=activation

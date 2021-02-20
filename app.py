@@ -35,6 +35,7 @@ class Go():
         self.window.bind('<Return>',self.player_pass) #press ENTER key to pass
         self.player='Black' #Black or White
         self.board_status = np.zeros(shape=(number_of_dots, number_of_dots)) # board matrix
+        self.last_board_status = np.zeros(shape=(number_of_dots, number_of_dots)) # board matrix 1 move ago (for ko)
         # board_status[0,0] is top left
         # board_status[18,0] is bottom left
         # a value of 0 means empty
@@ -48,6 +49,7 @@ class Go():
 
     def play_again(self):
         self.board_status = np.zeros(shape=(number_of_dots, number_of_dots))
+        self.last_board_status = np.zeros(shape=(number_of_dots, number_of_dots))
         self.black_captures=0
         self.white_captures=0
         self.prior_pass=False
@@ -114,20 +116,60 @@ class Go():
         if self.board_status[row,column]== 0:
             occupied=False
         return occupied
-
-    def check_for_captures(self,last_played):
+    
+    
+    def is_illegal_ko(self,row,column):
         '''
-        Checks the internal board matrix for captured stones. If stones are captured, updates matrix
+        Checks if a given move would violate Ko
+        '''
+        # need to check if desired move would create the same board as previous board
+
+        # create a board with the desired move played
+        board_check=self.board_status.copy() # we don't want this function to update self.board_status
+                                             # when it updates board_check
+        if self.player=='Black':
+            board_check[row,column]=1
+        else:
+            board_check[row,column]=-1
+            
+        # check for captures for this new board
+        captures=self.check_for_captures(board_check,self.player)
+        # remove captured pieces from board_check
+        for i in range(len(captures)):
+            board_check[captures[i][0],captures[i][1]]=0
+            
+        # check to see if this new board is the same as self.last_board_status
+        comparison = board_check == self.last_board_status
+        equal_arrays = comparison.all() # if arrays are equal, move is illegal ko
+        
+        return equal_arrays
+        
+    
+    def is_legal_move(self,row,column):
+        '''
+        Checks if a given move is illegal (checks for Ko and whether grid is occupied)
+        '''
+        occupied=self.is_grid_occupied(row,column)
+        illegal_ko=self.is_illegal_ko(row,column)
+        
+        if ((occupied)or(illegal_ko)):
+            return False # move is not legal
+        return True # move is legal
+        
+
+    def check_for_captures(self,board_check,last_played):
+        '''
+        Checks the internal board matrix for captured stones
 
         params:
-            last_played - 'Black' or 'White', color of the last stone played
+            board_check - board_status for board to check for captures
+        returns:
+            captures - list with [row,column] of each captured space ex. [[1,2],[15,16]]
         '''
-
+        
         if last_played=='Black':
-            # If black played last, we check for white stones to be captured
             capture_value=-1
-        elif last_played=='White':
-            # If white played last, we check for black stones to be captured
+        else:
             capture_value=1
 
         dangers=[] #list of lists for [row,column] of stones with no free liberties but a connection to a friendly stone
@@ -139,30 +181,30 @@ class Go():
                 free=False #whether this stone has a liberty
 
                 # does this position have a stone of the color that might be captured?
-                if self.board_status[row,column]==capture_value:
+                if board_check[row,column]==capture_value:
 
                     # Check immediate connections to this stone
                     # First check if there's a liberty
                     # Then check if there's a connection to a friendly stone
                     if row!=0:
-                        if self.board_status[row-1,column]==0: #is one up free?
+                        if board_check[row-1,column]==0: #is one up free?
                             free=True
-                        if self.board_status[row-1,column]==capture_value: #is one up connected to a friendly stone?
+                        if board_check[row-1,column]==capture_value: #is one up connected to a friendly stone?
                             connection=True
                     if row!=18:
-                        if self.board_status[row+1,column]==0: #is one down free?
+                        if board_check[row+1,column]==0: #is one down free?
                             free=True
-                        if self.board_status[row+1,column]==capture_value:
+                        if board_check[row+1,column]==capture_value:
                             connection=True
                     if column!=0:
-                        if self.board_status[row,column-1]==0: #is one left free?
+                        if board_check[row,column-1]==0: #is one left free?
                             free=True
-                        if self.board_status[row,column-1]==capture_value:
+                        if board_check[row,column-1]==capture_value:
                             connection=True
                     if column!=18:
-                        if self.board_status[row,column+1]==0: #is one right free?
+                        if board_check[row,column+1]==0: #is one right free?
                             free=True
-                        if self.board_status[row,column+1]==capture_value:
+                        if board_check[row,column+1]==capture_value:
                             connection=True
 
                     # If there is a free liberty, no worries
@@ -195,25 +237,25 @@ class Go():
 
                     #check adjacent positions for an ally
                     if ally_row!=0:
-                        if self.board_status[ally_row-1,ally_column]==capture_value:
+                        if board_check[ally_row-1,ally_column]==capture_value:
                             new_ally=[ally_row-1,ally_column]
                             if new_ally not in allies:
                                 allies.append(new_ally)
                                 found_an_ally=True
                     if ally_row!=18:
-                        if self.board_status[ally_row+1,ally_column]==capture_value:
+                        if board_check[ally_row+1,ally_column]==capture_value:
                             new_ally=[ally_row+1,ally_column]
                             if new_ally not in allies:
                                 allies.append(new_ally)
                                 found_an_ally=True
                     if ally_column!=0:
-                        if self.board_status[ally_row,ally_column-1]==capture_value:
+                        if board_check[ally_row,ally_column-1]==capture_value:
                             new_ally=[ally_row,ally_column-1]
                             if new_ally not in allies:
                                 allies.append(new_ally)
                                 found_an_ally=True
                     if ally_column!=18:
-                        if self.board_status[ally_row,ally_column+1]==capture_value:
+                        if board_check[ally_row,ally_column+1]==capture_value:
                             new_ally=[ally_row,ally_column+1]
                             if new_ally not in allies:
                                 allies.append(new_ally)
@@ -229,16 +271,16 @@ class Go():
                 ally_column=allies[i][1]
 
                 if ally_row!=0:
-                    if self.board_status[ally_row-1,ally_column]==0:
+                    if board_check[ally_row-1,ally_column]==0:
                         free_ally=True
                 if ally_row!=18:
-                    if self.board_status[ally_row+1,ally_column]==0:
+                    if board_check[ally_row+1,ally_column]==0:
                         free_ally=True
                 if ally_column!=0:
-                    if self.board_status[ally_row,ally_column-1]==0:
+                    if board_check[ally_row,ally_column-1]==0:
                         free_ally=True
                 if ally_column!=18:
-                    if self.board_status[ally_row,ally_column+1]==0:
+                    if board_check[ally_row,ally_column+1]==0:
                         free_ally=True
 
             # if no allies have a liberty, this stone is captured
@@ -246,37 +288,37 @@ class Go():
             # but no redundancy in the grid points added to captured_rows/captured_columns
             if not free_ally:
                 captures.append([row,column])
-
-        # Finally once we know which stones are captured, remove them from the board and grant capture points
-        num_captures=len(captures)
-        if last_played=='Black':
-            # black captures white
-            self.black_captures+=num_captures
-        elif last_played=='White':
-            # white captures black
-            self.white_captures+=num_captures
-        for i in range(num_captures):
-            self.board_status[captures[i][0],captures[i][1]]=0
+                    
+        # now captures is a list of all captured positions (of opposite color of last_played)
+            
+        return captures
 
     def update_board(self,row,column):
         '''
         Given a valid position to play, updates the internal board matrix
         first places a stone, then checks for stones being captured.
         '''
-
+        self.last_board_status=self.board_status.copy()
         if self.player=='Black':
             dot_color=black_color
             # black is 1
             self.board_status[row,column]=1
-            self.check_for_captures(last_played='Black')
+            captures=self.check_for_captures(self.board_status,last_played='Black')
+            self.black_captures+=len(captures)
             self.player='White'
 
         else:
             dot_color=white_color
             # white is -1
             self.board_status[row,column]=-1
-            self.check_for_captures(last_played='White')
+            captures=self.check_for_captures(self.board_status,last_played='White')
+            self.white_captures+=len(captures)
             self.player='Black'
+            
+        # update board matrix
+        for i in range(len(captures)):
+            self.board_status[captures[i][0],captures[i][1]]=0
+        
 
     def display_turn_text(self):
         text = 'Next turn: '+self.player
@@ -301,7 +343,8 @@ class Go():
     def click(self, event):
         grid_position = [event.x, event.y]
         row,column = self.convert_grid_to_logical_position(grid_position)
-        if not self.is_grid_occupied(row,column):
+        
+        if self.is_legal_move(row,column):
             self.update_board(row,column)
             self.refresh_board()
             self.prior_pass=False

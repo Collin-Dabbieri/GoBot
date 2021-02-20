@@ -1,29 +1,28 @@
 # This script will take the Go database I downloaded and combine the whole deal into training and validation binary files that can be easily passed to the model
-# (I'm assuming generators won't be necessary)
-# Model input will be a (19x19) matrix populated with a 0 for empty stones, 1 for the active player's stones, and -1 for the enemy's stones.
-# Output will be a (19x19) matrix with a 1 in the position played
+# Model input will be a (19x19) matrix populated with 11 binary planes (3 for board position, 8 for number of liberties)
+# Output will be a (19*19+1) array with a 1 in the position played, if pass then the last entry will be 1
 # I'll have to coerce all of the training data into that format
 
-# NOTE currently the model does not pass
+# Now the model does pass
 
 
 # Shape for actual input will be
-# (num_points,19,19,1)
+# (num_points,19,19,11)
 # Shape for output will be
-# (num_points,19x19)
+# (num_points,19*19+1)
 
 import numpy as np
 import time
 
 
 ######################### USER SPECIFIED VALUES ##############################################
-database_dir='/home/pi/Go_Database/jgdb/'
+database_dir='/Users/dabbiecm/Go_Database/jgdb/'
 # paths in text files are like './sgf/train/0000/00000012.sgf'
 raw_train_paths=np.loadtxt(database_dir+'train.txt',dtype=str)
 raw_validation_paths=np.loadtxt(database_dir+'val.txt',dtype=str)
 raw_test_paths=np.loadtxt(database_dir+'test.txt',dtype=str)
 
-savedir='/home/pi/Go_Database/Processed/' # Directory for saving processed binary files
+savedir='/Users/dabbiecm/Go_Database/Processed/' # Directory for saving processed binary files
 
 print_every=50 # print a progress report every print_every games added to data
 
@@ -166,13 +165,56 @@ def calculate_liberties(board_status):
     return liberties
 
 
+def create_liberty_planes(liberties):
+    '''
+    Takes a 19x19 board with the calculated number of player liberties at each point and returns a 19x19x8 bit plane.
+    For each gridpoint on the 19x19 board, the 8 planes present the 8-bit binary representation of the number of liberties.
+    
+    format(14, '08b') -> '00001110'
+    '''
+    
+    liberty_planes=np.zeros(shape=(19,19,8))
+    
+    for row in range(19):
+        for column in range(19):
+            
+            #get 8 bit binary value for number of liberties at this spot
+            #returns a string
+            binary_val=format(int(liberties[row,column]),'08b')
+            
+            for i in range(8):
+                
+                if binary_val[i]=='1':
+                    liberty_planes[row,column,1]=1
+    
+    return liberty_planes
+
+    
+def create_board_planes(board_status):
+    '''
+    Takes a 19x19 board with the positions of friendly (1), enemy (-1), and empty (0) grid spaces and returns a 19x19x3 bit plane.
+    Plane 0 has a 1 in positions with friendly stones, Plane 1 has a 1 in positions with enemy stones, Plane 2 has a 1 in positions with no stones.
+    '''
+    board_planes=np.zeros(shape=(19,19,3))
+    for row in range(19):
+        for column in range(19):
+            
+            if board_status[row,column]==1:
+                board_planes[row,column,0]=1
+            elif board_status[row,column]==-1:
+                board_planes[row,column,1]=1
+            else:
+                board_planes[row,column,2]=1
+    return board_planes
+            
+            
+
+
 def coerce_data(path):
     '''
     takes a single game file and creates hundreds of training points from it
     The model will be learning to play both white and black,
     so if each player plays 100 moves, that's 200 datapoints
-    for each datapoint, the input matrix will have 1s for the current player's pieces
-    and -1s for the other player's pieces
 
     params:
         path - path to the game file
@@ -198,56 +240,63 @@ def coerce_data(path):
     #initialize an empty board
     board_status=np.zeros(shape=(19,19)) #this board will always have black=1, white=-1
 
-    ins=np.zeros(shape=(len(moves),19,19,2)) #plane 0 is board, plane 1 is number of liberties for friendly stones
-    outs=np.zeros(shape=(len(moves),19*19))
+    ins=np.zeros(shape=(len(moves),19,19,11)) #plane 0,1,2 are board status planes, rest are planes for number of liberties for friendly stones
+    outs=np.zeros(shape=(len(moves),19*19+1)) # all grid positions plus 'pass'
 
     black_move=True #whether the output is a move made by black
 
     if len(moves)==1:
         # at least some of the games from the database have 0 moves in them
         return None,None
-    delete_idx=[] #indexes deleted from ins and outs because a user passed
+    
     for i in range(len(moves)):
+
+        player_pass=False
+        
+        # determine board status based on whose turn it is
+        if black_move: #if black is next to move, no conversion of board_status is necessary (black is 1)
+            ins_iter=np.asarray(board_status)
+        else: # if black is not next to move, need to convert board_status so white is 1
+            ins_iter=np.asarray(board_status)*-1
 
         idx_left=int(moves[i].find('['))
         l1=moves[i][idx_left+1]
         l2=moves[i][idx_left+2]
         if l1+l2=='tt':
             # the player passed
-            delete_idx.append(i)
-            black_move=not black_move
-            continue # return to top of for loop for next i
+            player_pass=True
 
-        row,column=get_row_column_from_letters(l1,l2)
+        if not player_pass:
+            row,column=get_row_column_from_letters(l1,l2)
 
-        # build our input for this iteration and update board_status for the next iteration
-        if black_move: #if black is next to move, no conversion of board_status is necessary (black is 1)
-            ins_iter=board_status
-            # since black played, add a 1 to board_status for the next input
-            board_status[row,column]=1
-        else: # if black is not next to move, need to convert board_status so white is 1
-            ins_iter=board_status*-1
-            # since white played, add a -1 to board_status for the next input
-            board_status[row,column]=-1
+            # build our input for this iteration and update board_status for the next iteration
+            if black_move: 
+                # since black played, add a 1 to board_status for the next input
+                board_status[row,column]=1
+            else: # if black is not next to move, need to convert board_status so white is 1
+                board_status[row,column]=-1
 
         # update whose move it is
         black_move=not black_move
 
         # now the output is all zeros except where the next move is played (but flattened)
         # the output is always a 1 because the input is always a 1 for friendly stones
-        next_play=np.zeros(shape=(19,19))
-        next_play[row,column]=1
-        outs_iter=next_play.flatten()
+        if not player_pass:
+            next_play=np.zeros(shape=(19,19))
+            next_play[row,column]=1
+            outs_iter=np.append(next_play.flatten(),0) # add a zero on the end for 'pass'
+        else:
+            # if the player passed, the outs has a one in the last slot
+            outs_iter=np.zeros(19*19+1)
+            outs_iter[-1]=1
 
-        ins[i,:,:,0]=ins_iter
+        board_planes=create_board_planes(ins_iter)
         liberties=calculate_liberties(ins_iter) # remember calculate_liberties is passed a board where friendly=1
-        ins[i,:,:,1]=liberties
+        liberties_planes=create_liberty_planes(liberties)
+        ins[i,:,:,:3]=board_planes #first three planes are board positions
+        ins[i,:,:,3:]=liberties_planes #remaining planes are liberties
         outs[i,:]=outs_iter
 
-    # remove passes from ins and outs
-    if len(delete_idx)>0:
-        ins=np.delete(ins,delete_idx,axis=0)
-        outs=np.delete(outs,delete_idx,axis=0)
 
     #time2=time.time()
     #print("Time to load in strings: {:.3f} s".format(time1-time0))
@@ -270,7 +319,7 @@ if __name__=='__main__':
     print("Creating Training Data")
     print("Number of Train paths: "+str(len(train_paths)))
     print("Number of Training Data Being Used: "+str(num_train))
-    for i in range(0):
+    for i in range(num_train):
 
         if ((i%print_every==0)&(i!=0)):
             # print progress report
@@ -305,7 +354,7 @@ if __name__=='__main__':
     frac_train=num_train/len(train_paths)
     num_val=int(frac_train*len(val_paths))
     print("Number of Validation Paths Being Used: "+str(num_val))
-    for i in range(0):
+    for i in range(num_val):
 
         if ((i%print_every==0)&(i!=0)):
             # print progress report

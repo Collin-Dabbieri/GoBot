@@ -56,11 +56,6 @@ class DataGenerator(tf.keras.utils.Sequence):
         ins=data.item().get('ins') #shape num_moves,19,19,2
         outs=data.item().get('outs') #shape num_moves,19*19
 
-        num_moves=np.shape(ins)[0]
-
-        # we actually want our model output to be a 19x19 matrix so we need to reshape outs
-        outs=outs.reshape((num_moves,19,19,1))
-
         return ins,outs
 
 

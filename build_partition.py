@@ -6,8 +6,8 @@ import numpy as np
 
 ########### USER SPECIFIED VALUES ################################################################
 
-files_dir='/home/pi/Go_Database/Processed/' # path to directory where training data, validation data, and partition file are located
-filename_partition='partition.npy'          # filename of partition file
+files_dir='/Users/dabbiecm/Go_Database/Processed/' # path to directory where training data, validation data, and partition file are located
+filename_partition='partition.npy'                 # filename of partition file
 
 ########### MAIN LOOP ############################################################################
 
